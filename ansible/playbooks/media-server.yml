@@ -1,0 +1,109 @@
+---
+- name: Media Server Full Setup
+  hosts: media-server
+  become: true
+
+  vars:
+    media_user: mediaservice
+    media_uid: 1001
+    media_gid: 1001
+    zfs_pool_name: mediapool
+    zfs_device: /dev/sdb
+    data_mount: /data
+    directories:
+      - "{{ data_mount }}/compose"
+      - "{{ data_mount }}/config"
+      - "{{ data_mount }}/downloads/quarantine"
+      - "{{ data_mount }}/downloads/cleared"
+      - "{{ data_mount }}/media/movies"
+      - "{{ data_mount }}/media/tv"
+      - "{{ data_mount }}/scripts"
+
+  tasks:
+    - name: Install ZFS utilities
+      apt:
+        name: zfsutils-linux
+        state: present
+        update_cache: yes
+
+    - name: Create ZFS pool
+      command: >
+        zpool create -f -m {{ data_mount }} {{ zfs_pool_name }} {{ zfs_device }}
+      args:
+        creates: "{{ data_mount }}"
+
+    - name: Enable lz4 compression on ZFS pool
+      command: zfs set compression=lz4 {{ zfs_pool_name }}
+
+    - name: Create mediaservice group
+      group:
+        name: "{{ media_user }}"
+        gid: "{{ media_gid }}"
+        state: present
+
+    - name: Create mediaservice user
+      user:
+        name: "{{ media_user }}"
+        uid: "{{ media_uid }}"
+        group: "{{ media_user }}"
+        shell: /bin/false
+        system: yes
+        create_home: no
+
+    - name: Create media directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ media_user }}"
+        group: "{{ media_user }}"
+        mode: "0755"
+      loop: "{{ directories }}"
+
+    - name: Install Docker
+      shell: curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Configure Docker daemon
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "ipv6": false,
+            "dns": ["1.1.1.1", "8.8.8.8"],
+            "dns-opts": ["ndots:0"]
+          }
+      notify: Restart Docker
+
+    - name: Install Intel media drivers
+      apt:
+        name:
+          - vainfo
+          - intel-media-va-driver-non-free
+        state: present
+
+    - name: Copy gatekeeper script
+      copy:
+        src: ../../scripts/gatekeeper.sh
+        dest: "{{ data_mount }}/scripts/gatekeeper.sh"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Schedule gatekeeper cron job
+      cron:
+        name: "ClamAV quarantine gatekeeper"
+        minute: "*/10"
+        job: "{{ data_mount }}/scripts/gatekeeper.sh"
+
+  handlers:
+    - name: Restart Docker
+      service:
+        name: docker
+        state: restarted

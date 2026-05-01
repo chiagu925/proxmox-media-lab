@@ -1,0 +1,62 @@
+---
+- name: Base Ubuntu VM Setup
+  hosts: all
+  become: true
+
+  vars:
+    base_packages:
+      - curl
+      - wget
+      - git
+      - htop
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+      - zfsutils-linux
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      apt:
+        name: "{{ base_packages }}"
+        state: present
+
+    - name: Set UFW default deny incoming
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Allow SSH through UFW
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
+
+    - name: Enable and start Fail2Ban
+      service:
+        name: fail2ban
+        state: started
+        enabled: yes
+
+    - name: Install Tailscale
+      shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Enable unattended upgrades
+      command: dpkg-reconfigure -f noninteractive unattended-upgrades
+
+    - name: Disable IPv6 system-wide
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        reload: yes
+      loop:
+        - net.ipv6.conf.all.disable_ipv6
+        - net.ipv6.conf.default.disable_ipv6

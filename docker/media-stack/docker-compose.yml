@@ -1,0 +1,123 @@
+---
+# Automated Enterprise Media Infrastructure
+# Docker Compose Stack
+# All services run as PUID/PGID 1001 (mediaservice user)
+# All media paths relative to /data ZFS pool
+
+services:
+
+  # ─────────────────────────────────────────
+  # MEDIA SERVER
+  # ─────────────────────────────────────────
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+    volumes:
+      - /data/config/jellyfin:/config
+      - /data/media/tv:/data/tvshows
+      - /data/media/movies:/data/movies
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128  # Intel QuickSync passthrough
+    ports:
+      - 8096:8096
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # TV AUTOMATION
+  # ─────────────────────────────────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+    volumes:
+      - /data/config/sonarr:/config
+      - /data/media/tv:/tv
+      - /data/downloads/cleared:/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # MOVIE AUTOMATION
+  # ─────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+    volumes:
+      - /data/config/radarr:/config
+      - /data/media/movies:/movies
+      - /data/downloads/cleared:/downloads
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # INDEXER AGGREGATION
+  # ─────────────────────────────────────────
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+    volumes:
+      - /data/config/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # DOWNLOAD CLIENT
+  # ─────────────────────────────────────────
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=America/New_York
+      - WEBUI_PORT=8080
+    volumes:
+      - /data/config/qbittorrent:/config
+      - /data/downloads/quarantine:/downloads  # Downloads land in quarantine first
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # CLOUDFLARE BYPASS
+  # ─────────────────────────────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.3.21
+    container_name: flaresolverr
+    shm_size: '2gb'
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - TZ=Etc/UTC
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # ANTIVIRUS — QUARANTINE SCANNER
+  # ─────────────────────────────────────────
+  clamav:
+    image: clamav/clamav:latest
+    container_name: clamav
+    volumes:
+      - /data/downloads/quarantine:/scandir:ro  # Read-only — ClamAV cannot modify files
+    restart: unless-stopped

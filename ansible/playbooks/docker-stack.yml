@@ -1,0 +1,31 @@
+---
+- name: Deploy Media Docker Stack
+  hosts: media-server
+  become: true
+
+  vars:
+    compose_file: /data/compose/docker-compose.yml
+    compose_src: ../../docker/media-stack/docker-compose.yml
+
+  tasks:
+    - name: Copy docker-compose file to server
+      copy:
+        src: "{{ compose_src }}"
+        dest: "{{ compose_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Pull latest images
+      command: docker compose -f {{ compose_file }} pull
+
+    - name: Deploy stack
+      command: docker compose -f {{ compose_file }} up -d
+
+    - name: Verify containers are running
+      command: docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      register: docker_status
+
+    - name: Show container status
+      debug:
+        msg: "{{ docker_status.stdout_lines }}"
