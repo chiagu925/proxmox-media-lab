@@ -1,4 +1,4 @@
-# Proxmox Home Lab — Automated Enterprise Media Infrastructure
+# Proxmox Cloud Infrastructure — Automated Enterprise Media Infrastructure
 
 A self-hosted, production-grade media platform built on bare metal using a Type-1 hypervisor. This project was designed and deployed end-to-end as a hands-on exercise in cloud architecture, infrastructure automation, and security engineering.
 
